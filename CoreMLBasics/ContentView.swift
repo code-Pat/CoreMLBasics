@@ -27,6 +27,11 @@ struct ContentView: View {
                 .tabItem {
                     Label("텍스트 분석", systemImage: "text.word.spacing")
                 }
+
+            OnDeviceLLMView()
+                .tabItem {
+                    Label("온디바이스 LLM", systemImage: "brain")
+                }
         }
     }
 }

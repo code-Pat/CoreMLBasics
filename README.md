@@ -66,6 +66,42 @@ let y = (1 - visionRect.maxY) * frameHeight
 
 ---
 
+## Task 5. 온디바이스 LLM (Foundation Models Framework)
+
+Apple Intelligence의 온디바이스 LLM을 앱에서 직접 호출합니다. 네트워크 없이 기기에서 추론하며, Swift 타입 시스템과 긴밀하게 통합된 구조화 출력을 지원합니다.
+
+**구현 내용**
+- `LanguageModelSession` — 시스템 프롬프트(trailing closure) + 대화 컨텍스트 관리
+- `streamResponse(to:)` — 토큰 단위 스트리밍, ChatGPT와 동일한 UX를 온디바이스로 구현
+- `@Generable` + `@Guide` — constrained decoding으로 Swift 타입 직접 생성 (JSON 파싱 불필요)
+- `SystemLanguageModel.default.availability` — Apple Intelligence 가용 여부 런타임 체크
+
+**핵심 구조**
+```swift
+// 스트리밍 채팅
+let session = LanguageModelSession { "시스템 프롬프트" }
+let stream = session.streamResponse(to: userInput)
+for try await partial in stream { text = partial.content }
+
+// @Generable 구조화 출력
+@Generable struct TextInsight {
+    @Guide(description: "감정: positive / negative / neutral") var sentiment: String
+    var keywords: [String]
+    var summary: String
+}
+let insight = try await session.respond(to: prompt, generating: TextInsight.self).content
+```
+
+| | Phase 1 (OpenAI API) | Task 5 (Foundation Models) |
+|---|---|---|
+| 추론 위치 | 서버 | 온디바이스 |
+| 네트워크 | 필요 | 불필요 |
+| 구조화 출력 | JSON mode (사후 파싱) | @Generable (constrained decoding) |
+| 비용 | 토큰당 과금 | 무료 |
+| 모델 크기 | GPT-4o 등 | ~3B (Apple Intelligence) |
+
+---
+
 ## Task 4. 텍스트 분석 (Natural Language Framework)
 
 OCR로 추출한 텍스트를 온디바이스 NLP 파이프라인으로 처리합니다.
