@@ -2,6 +2,14 @@
 
 iOS 앱에서 Apple의 Core ML, Vision, Natural Language 프레임워크를 활용해 온디바이스 AI 기능을 구현하는 프로젝트입니다. 서버 호출 없이 기기에서 직접 추론하는 구조로, 프라이버시와 응답 속도를 모두 챙깁니다.
 
+## 시작하기
+
+OpenAI API 키가 필요합니다. 프로젝트 루트에 `Secrets.xcconfig` 파일을 생성하고 아래 내용을 추가하세요. (이 파일은 `.gitignore`에 포함되어 있습니다.)
+
+```
+OPENAI_API_KEY = your_api_key_here
+```
+
 ## 기술 스택
 
 - Swift / SwiftUI
@@ -54,6 +62,29 @@ AVCaptureSession으로 카메라 피드를 받아 Vision 요청을 실시간으�
 ```swift
 // Vision: 좌하단 원점, Y↑  →  SwiftUI: 좌상단 원점, Y↓
 let y = (1 - visionRect.maxY) * frameHeight
+```
+
+---
+
+## Task 4. 텍스트 분석 (Natural Language Framework)
+
+OCR로 추출한 텍스트를 온디바이스 NLP 파이프라인으로 처리합니다.
+
+**구현 내용**
+- `NLLanguageRecognizer` — 다국어 텍스트 언어 자동 감지 및 확신도 순위
+- `NLTokenizer` — 단어/문장/문단 단위 토큰화 및 통계 집계
+- `NLTagger` (.nameType 스킴) — 인물·장소·기관 개체명 인식(NER), `.joinNames` 옵션으로 복합 고유명사 결합
+- `NLEmbedding` — 문장 임베딩 기반 코사인 유사도 계산, 한국어는 wordEmbedding 폴백
+
+**핵심 구조**
+```swift
+// NER: 언어 힌트 주입 후 .nameType 스킴으로 열거
+let tagger = NLTagger(tagSchemes: [.nameType])
+tagger.setLanguage(dominant, range: fullRange)
+tagger.enumerateTags(..., scheme: .nameType, options: [.omitWhitespace, .joinNames]) { tag, range in ... }
+
+// 유사도: sentence → word 임베딩 폴백
+NLEmbedding.sentenceEmbedding(for: language) ?? NLEmbedding.wordEmbedding(for: language)
 ```
 
 ---

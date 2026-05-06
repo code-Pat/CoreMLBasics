@@ -22,6 +22,11 @@ struct ContentView: View {
                 .tabItem {
                     Label("인증 보조", systemImage: "person.crop.rectangle")
                 }
+
+            TextAnalysisView()
+                .tabItem {
+                    Label("텍스트 분석", systemImage: "text.word.spacing")
+                }
         }
     }
 }
