@@ -1,5 +1,183 @@
 # CoreMLBasics
 
+An iOS app exploring on-device AI using Apple's Core ML, Vision, Natural Language, and Foundation Models frameworks. All inference runs directly on-device — no server calls — prioritizing both privacy and response speed.
+
+## Getting Started
+
+An OpenAI API key is required. Create a `Secrets.xcconfig` file in the project root and add the following. (This file is included in `.gitignore`.)
+
+```
+OPENAI_API_KEY = your_api_key_here
+```
+
+## Tech Stack
+
+- Swift / SwiftUI
+- Core ML
+- Vision Framework
+- AVFoundation
+- Natural Language Framework
+- Foundation Models Framework
+- OpenAI API
+
+---
+
+## Task 1. Image Classification (Core ML + Vision)
+
+Bundles a MobileNetV2 model into the app to classify gallery images entirely on-device.
+
+**Implementation**
+- `VNCoreMLModel` + `VNCoreMLRequest` + `VNImageRequestHandler` pipeline
+- Async inference with `async/await`
+- Top-5 classification results with confidence visualization
+- Inference time measurement
+
+**Core Structure**
+```swift
+let model = try VNCoreMLModel(for: MobileNetV2().model)
+let request = VNCoreMLRequest(model: model) { ... }
+try VNImageRequestHandler(cgImage: img).perform([request])
+```
+
+| | LLM API (Server) | Core ML (On-device) |
+|---|---|---|
+| Network | Required | Not required |
+| Privacy | Data sent externally | Stays on device |
+| Cost | Per-token billing | Free |
+| Speed | Network latency | 10–100ms |
+
+---
+
+## Task 2. Real-time QR / Text Recognition (Vision Framework)
+
+Processes Vision requests on live camera frames captured via `AVCaptureSession`.
+
+**Implementation**
+- `AVCaptureSession` + `AVCaptureVideoDataOutput` pipeline
+- `VNDetectBarcodesRequest` — Real-time QR code and barcode detection
+- `VNRecognizeTextRequest` — Real-time OCR (Korean/English)
+- `UIViewRepresentable` bridge for SwiftUI ↔ `AVCaptureVideoPreviewLayer`
+- Vision-to-SwiftUI coordinate conversion with detection overlay
+
+**Coordinate Conversion**
+```swift
+// Vision: bottom-left origin, Y↑  →  SwiftUI: top-left origin, Y↓
+let y = (1 - visionRect.maxY) * frameHeight
+```
+
+---
+
+## Task 3. Face Recognition + ID Card Scan (Vision Advanced)
+
+Extracts facial landmarks and scans ID cards using document segmentation, then pipes OCR output through an LLM API for structured parsing.
+
+**Implementation**
+- `VNDetectFaceLandmarksRequest` — Face bounding box + 68 landmark points (eyes, nose, mouth, contour)
+- `VNDetectDocumentSegmentationRequest` — ID card edge detection and region crop (iOS 15+)
+- `VNRecognizeTextRequest` in `.accurate` mode applied to the cropped document region
+- OCR text sent to OpenAI API (JSON mode) for structured parsing of name / DOB / address
+- Facial landmark overlay rendered in SwiftUI
+
+**Landmark Coordinate Conversion**
+```swift
+// Landmark points are in local coordinates relative to the face boundingBox — two-step conversion required
+let globalX = faceBBox.minX + localPoint.x * faceBBox.width
+let globalY = faceBBox.minY + localPoint.y * faceBBox.height
+// Then apply Vision → SwiftUI Y-axis flip
+```
+
+**On-device (Vision) + LLM API Pipeline**
+```
+ID photo → VNDetectDocumentSegmentation (crop) → VNRecognizeText (OCR) → OpenAI API (parse) → DocumentInfo
+```
+
+---
+
+## Task 4. Text Analysis (Natural Language Framework)
+
+Processes OCR-extracted text through an on-device NLP pipeline.
+
+**Implementation**
+- `NLLanguageRecognizer` — Multi-language detection with confidence ranking
+- `NLTokenizer` — Tokenization and statistics at word / sentence / paragraph level
+- `NLTagger` (`.nameType` scheme) — Named Entity Recognition (NER) for persons, places, and organizations; `.joinNames` option to merge multi-word proper nouns
+- `NLEmbedding` — Cosine similarity via sentence embeddings; falls back to word embeddings for Korean
+
+**Core Structure**
+```swift
+// NER: inject language hint, then enumerate with .nameType scheme
+let tagger = NLTagger(tagSchemes: [.nameType])
+tagger.setLanguage(dominant, range: fullRange)
+tagger.enumerateTags(..., scheme: .nameType, options: [.omitWhitespace, .joinNames]) { tag, range in ... }
+
+// Similarity: sentence → word embedding fallback
+NLEmbedding.sentenceEmbedding(for: language) ?? NLEmbedding.wordEmbedding(for: language)
+```
+
+---
+
+## Task 5. On-device LLM (Foundation Models Framework)
+
+Calls Apple Intelligence's on-device LLM directly from the app. Runs inference without a network connection, with structured output tightly integrated into the Swift type system.
+
+**Implementation**
+- `LanguageModelSession` — System prompt via trailing closure + conversation context management
+- `streamResponse(to:)` — Token-by-token streaming; same UX as ChatGPT, fully on-device
+- `@Generable` + `@Guide` — Constrained decoding to produce Swift types directly (no JSON parsing)
+- `SystemLanguageModel.default.availability` — Runtime check for Apple Intelligence availability
+
+**Core Structure**
+```swift
+// Streaming chat
+let session = LanguageModelSession { "System prompt" }
+let stream = session.streamResponse(to: userInput)
+for try await partial in stream { text = partial.content }
+
+// @Generable structured output
+@Generable struct TextInsight {
+    @Guide(description: "Sentiment: positive / negative / neutral") var sentiment: String
+    var keywords: [String]
+    var summary: String
+}
+let insight = try await session.respond(to: prompt, generating: TextInsight.self).content
+```
+
+| | Phase 1 (OpenAI API) | Task 5 (Foundation Models) |
+|---|---|---|
+| Inference location | Server | On-device |
+| Network | Required | Not required |
+| Structured output | JSON mode (post-parse) | @Generable (constrained decoding) |
+| Cost | Per-token billing | Free |
+| Model size | GPT-4o etc. | ~3B (Apple Intelligence) |
+
+---
+
+## Task 6. On-device AI Pipeline (Phase 2 Integration)
+
+Connects the features built in Tasks 1–5 into a single end-to-end flow. The entire pipeline runs on-device with no server calls.
+
+**Pipeline Flow**
+```
+📸 Image input
+    ↓
+🔍 Step 1: Vision OCR (VNDetectDocumentSegmentationRequest → VNRecognizeTextRequest)
+    ↓
+🌐 Step 2: Language detection (NLLanguageRecognizer)
+    ↓
+🤖 Step 3: On-device summarization (LanguageModelSession — streaming)
+```
+
+**Implementation**
+- Per-step status visualization (waiting / running / done / failed)
+- Step 3 summary streamed in real time
+- Graceful fallback for devices without Apple Intelligence
+- Reuses `DocumentScanService` (Task 3), `NLService` (Task 4), and `LanguageModelSession` (Task 5)
+
+---
+---
+
+# CoreMLBasics
+
 iOS 앱에서 Apple의 Core ML, Vision, Natural Language 프레임워크를 활용해 온디바이스 AI 기능을 구현하는 프로젝트입니다. 서버 호출 없이 기기에서 직접 추론하는 구조로, 프라이버시와 응답 속도를 모두 챙깁니다.
 
 ## 시작하기
