@@ -17,6 +17,7 @@ OPENAI_API_KEY = your_api_key_here
 - Vision Framework
 - AVFoundation
 - Natural Language Framework
+- Foundation Models Framework
 - OpenAI API
 
 ---
@@ -66,6 +67,55 @@ let y = (1 - visionRect.maxY) * frameHeight
 
 ---
 
+## Task 3. 얼굴 인식 + 신분증 스캔 (Vision 심화)
+
+얼굴 랜드마크 추출과 문서 감지 기반 신분증 스캔을 구현하고, OCR 결과를 LLM API로 연결해 정보를 구조화합니다.
+
+**구현 내용**
+- `VNDetectFaceLandmarksRequest` — 얼굴 위치 + 눈/코/입/윤곽 68개 랜드마크 포인트 추출
+- `VNDetectDocumentSegmentationRequest` — 신분증 외곽 감지 및 영역 크롭 (iOS 15+)
+- 크롭된 문서 영역에 `VNRecognizeTextRequest` 적용해 OCR 정확도 향상
+- OCR 원문을 OpenAI API(JSON mode)로 넘겨 이름/생년월일/주소 구조화 파싱
+- 얼굴 랜드마크 포인트 SwiftUI 오버레이 시각화
+
+**랜드마크 좌표 변환**
+```swift
+// 랜드마크는 얼굴 boundingBox 기준 로컬 좌표 → 두 단계 변환 필요
+let globalX = faceBBox.minX + localPoint.x * faceBBox.width
+let globalY = faceBBox.minY + localPoint.y * faceBBox.height
+// 이후 Vision → SwiftUI Y축 반전 적용
+```
+
+**Vision(온디바이스) + LLM API 연결 구조**
+```
+신분증 사진 → VNDetectDocumentSegmentation(크롭) → VNRecognizeText(OCR) → OpenAI API(파싱) → DocumentInfo
+```
+
+---
+
+## Task 4. 텍스트 분석 (Natural Language Framework)
+
+OCR로 추출한 텍스트를 온디바이스 NLP 파이프라인으로 처리합니다.
+
+**구현 내용**
+- `NLLanguageRecognizer` — 다국어 텍스트 언어 자동 감지 및 확신도 순위
+- `NLTokenizer` — 단어/문장/문단 단위 토큰화 및 통계 집계
+- `NLTagger` (.nameType 스킴) — 인물·장소·기관 개체명 인식(NER), `.joinNames` 옵션으로 복합 고유명사 결합
+- `NLEmbedding` — 문장 임베딩 기반 코사인 유사도 계산, 한국어는 wordEmbedding 폴백
+
+**핵심 구조**
+```swift
+// NER: 언어 힌트 주입 후 .nameType 스킴으로 열거
+let tagger = NLTagger(tagSchemes: [.nameType])
+tagger.setLanguage(dominant, range: fullRange)
+tagger.enumerateTags(..., scheme: .nameType, options: [.omitWhitespace, .joinNames]) { tag, range in ... }
+
+// 유사도: sentence → word 임베딩 폴백
+NLEmbedding.sentenceEmbedding(for: language) ?? NLEmbedding.wordEmbedding(for: language)
+```
+
+---
+
 ## Task 5. 온디바이스 LLM (Foundation Models Framework)
 
 Apple Intelligence의 온디바이스 LLM을 앱에서 직접 호출합니다. 네트워크 없이 기기에서 추론하며, Swift 타입 시스템과 긴밀하게 통합된 구조화 출력을 지원합니다.
@@ -99,52 +149,3 @@ let insight = try await session.respond(to: prompt, generating: TextInsight.self
 | 구조화 출력 | JSON mode (사후 파싱) | @Generable (constrained decoding) |
 | 비용 | 토큰당 과금 | 무료 |
 | 모델 크기 | GPT-4o 등 | ~3B (Apple Intelligence) |
-
----
-
-## Task 4. 텍스트 분석 (Natural Language Framework)
-
-OCR로 추출한 텍스트를 온디바이스 NLP 파이프라인으로 처리합니다.
-
-**구현 내용**
-- `NLLanguageRecognizer` — 다국어 텍스트 언어 자동 감지 및 확신도 순위
-- `NLTokenizer` — 단어/문장/문단 단위 토큰화 및 통계 집계
-- `NLTagger` (.nameType 스킴) — 인물·장소·기관 개체명 인식(NER), `.joinNames` 옵션으로 복합 고유명사 결합
-- `NLEmbedding` — 문장 임베딩 기반 코사인 유사도 계산, 한국어는 wordEmbedding 폴백
-
-**핵심 구조**
-```swift
-// NER: 언어 힌트 주입 후 .nameType 스킴으로 열거
-let tagger = NLTagger(tagSchemes: [.nameType])
-tagger.setLanguage(dominant, range: fullRange)
-tagger.enumerateTags(..., scheme: .nameType, options: [.omitWhitespace, .joinNames]) { tag, range in ... }
-
-// 유사도: sentence → word 임베딩 폴백
-NLEmbedding.sentenceEmbedding(for: language) ?? NLEmbedding.wordEmbedding(for: language)
-```
-
----
-
-## Task 3. 얼굴 인식 + 신분증 스캔 (Vision 심화)
-
-얼굴 랜드마크 추출과 문서 감지 기반 신분증 스캔을 구현하고, OCR 결과를 LLM API로 연결해 정보를 구조화합니다.
-
-**구현 내용**
-- `VNDetectFaceLandmarksRequest` — 얼굴 위치 + 눈/코/입/윤곽 68개 랜드마크 포인트 추출
-- `VNDetectDocumentSegmentationRequest` — 신분증 외곽 감지 및 영역 크롭 (iOS 15+)
-- 크롭된 문서 영역에 `VNRecognizeTextRequest` 적용해 OCR 정확도 향상
-- OCR 원문을 OpenAI API(JSON mode)로 넘겨 이름/생년월일/주소 구조화 파싱
-- 얼굴 랜드마크 포인트 SwiftUI 오버레이 시각화
-
-**랜드마크 좌표 변환**
-```swift
-// 랜드마크는 얼굴 boundingBox 기준 로컬 좌표 → 두 단계 변환 필요
-let globalX = faceBBox.minX + localPoint.x * faceBBox.width
-let globalY = faceBBox.minY + localPoint.y * faceBBox.height
-// 이후 Vision → SwiftUI Y축 반전 적용
-```
-
-**Vision(온디바이스) + LLM API 연결 구조**
-```
-신분증 사진 → VNDetectDocumentSegmentation(크롭) → VNRecognizeText(OCR) → OpenAI API(파싱) → DocumentInfo
-```
