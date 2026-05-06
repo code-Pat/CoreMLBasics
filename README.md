@@ -149,3 +149,26 @@ let insight = try await session.respond(to: prompt, generating: TextInsight.self
 | 구조화 출력 | JSON mode (사후 파싱) | @Generable (constrained decoding) |
 | 비용 | 토큰당 과금 | 무료 |
 | 모델 크기 | GPT-4o 등 | ~3B (Apple Intelligence) |
+
+---
+
+## Task 6. 온디바이스 AI 파이프라인 (Phase 2 통합)
+
+Task 1~5에서 구현한 기능들을 단일 흐름으로 연결합니다. 서버 호출 없이 기기 안에서 전체 파이프라인이 실행됩니다.
+
+**파이프라인 흐름**
+```
+📸 이미지 입력
+    ↓
+🔍 Step 1: Vision OCR (VNDetectDocumentSegmentationRequest → VNRecognizeTextRequest)
+    ↓
+🌐 Step 2: 언어 감지 (NLLanguageRecognizer)
+    ↓
+🤖 Step 3: 온디바이스 요약 (LanguageModelSession — 스트리밍)
+```
+
+**구현 내용**
+- 각 단계별 상태(대기 / 실행 중 / 완료 / 실패) 시각화
+- Step 3 요약 결과 스트리밍으로 실시간 출력
+- Apple Intelligence 미지원 기기 graceful fallback 처리
+- Task 3 `DocumentScanService`, Task 4 `NLService`, Task 5 `LanguageModelSession` 재사용

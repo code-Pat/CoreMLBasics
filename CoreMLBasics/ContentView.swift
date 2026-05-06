@@ -32,6 +32,11 @@ struct ContentView: View {
                 .tabItem {
                     Label("온디바이스 LLM", systemImage: "brain")
                 }
+
+            PipelineView()
+                .tabItem {
+                    Label("파이프라인", systemImage: "arrow.triangle.turn.up.right.diamond")
+                }
         }
     }
 }
